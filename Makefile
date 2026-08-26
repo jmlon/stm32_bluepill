@@ -24,9 +24,12 @@ FLASH_ADDR := 0x8000000
 EXPECTED_SP := 20005000
 
 # A directory is a sketch only if it contains <dir>/<dir>.ino.
+# Sketches may live at the repo root or under modules/.
 dirname  = $(notdir $(patsubst %/,%,$1))
-SKETCHES := $(sort $(foreach d,$(wildcard */), \
-              $(if $(wildcard $(d)$(call dirname,$(d)).ino),$(call dirname,$(d)))))
+SKETCH_DIRS := $(sort $(foreach d,$(wildcard */) $(wildcard modules/*/), \
+                 $(if $(wildcard $(d)$(call dirname,$(d)).ino),$(d))))
+SKETCHES := $(foreach d,$(SKETCH_DIRS),$(call dirname,$(d)))
+sketchdir = $(filter $(1)/ %/$(1)/,$(SKETCH_DIRS))
 
 # Sketch used by the bare `flash` and `check` targets.
 SKETCH ?= $(firstword $(SKETCHES))
@@ -35,10 +38,21 @@ SKETCH ?= $(firstword $(SKETCHES))
 
 all: $(SKETCHES)
 
+# A sketch may ship a build-flags.txt with extra compiler.cpp.extra_flags
+# (e.g. library configuration macros normally set via a global header), a
+# compat.h force-included ahead of every translation unit (e.g. to patch
+# missing declarations in a third-party library without editing it), and/or
+# a compat_includes/ directory added to the include search path (e.g. to
+# shim a missing/case-mismatched header a library expects).
+extra_flags = $(strip \
+  $(if $(wildcard $(call sketchdir,$(1))build-flags.txt),$(file <$(call sketchdir,$(1))build-flags.txt)) \
+  $(if $(wildcard $(call sketchdir,$(1))compat.h),-include $(abspath $(call sketchdir,$(1))compat.h)) \
+  $(if $(wildcard $(call sketchdir,$(1))compat_includes/),-I$(abspath $(call sketchdir,$(1))compat_includes)))
+
 # Per-sketch build, check and flash targets.
 define SKETCH_RULES
-$(BUILD_DIR)/$(1)/$(1).ino.bin: $(wildcard $(1)/*.ino $(1)/*.h $(1)/*.cpp $(1)/*.c)
-	arduino-cli compile -b "$(FQBN)" --output-dir $(BUILD_DIR)/$(1) $(1)
+$(BUILD_DIR)/$(1)/$(1).ino.bin: $(wildcard $(call sketchdir,$(1))*.ino $(call sketchdir,$(1))*.h $(call sketchdir,$(1))*.cpp $(call sketchdir,$(1))*.c $(call sketchdir,$(1))build-flags.txt)
+	arduino-cli compile -b "$(FQBN)" --output-dir $(BUILD_DIR)/$(1) $(if $(call extra_flags,$(1)),--build-property "compiler.cpp.extra_flags=$(call extra_flags,$(1))") $(call sketchdir,$(1))
 
 .PHONY: $(1) check-$(1) flash-$(1)
 
