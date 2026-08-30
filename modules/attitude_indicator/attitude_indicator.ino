@@ -91,6 +91,16 @@ uint32_t lastMicros = 0;
 int16_t rowX0[DISK_SIZE];
 int16_t rowW[DISK_SIZE];
 
+void drawRollIndicator() {
+    const int16_t r = DISK_SIZE / 2;
+    // This mark slightly overlaps the disk at its lower edge. Draw it after
+    // pushRotated(), otherwise the sprite's background can erase that edge.
+    tft.fillTriangle(CENTER_X, CENTER_Y - r - 6,
+                     CENTER_X - 5, CENTER_Y - r + 2,
+                     CENTER_X + 5, CENTER_Y - r + 2,
+                     TFT_YELLOW);
+}
+
 void i2cScan() {
     Wire.begin();
     int found = 0;
@@ -192,13 +202,9 @@ void setup() {
         rowW[y] = 2 * dx;
     }
 
-    // Roll-index triangle at the top of the dial: a fixed reference mark
-    // that never moves, so (unlike the horizon sprite) it only needs to be
-    // drawn once instead of every frame.
-    tft.fillTriangle(CENTER_X, CENTER_Y - r - 6,
-                      CENTER_X - 5, CENTER_Y - r + 2,
-                      CENTER_X + 5, CENTER_Y - r + 2,
-                      TFT_YELLOW);
+    // Roll-index triangle at the top of the dial. It overlaps the disk by a
+    // few pixels, so it is also redrawn after each rotated sprite push.
+    drawRollIndicator();
 
     lastMicros = micros();
 
@@ -280,12 +286,10 @@ void loop() {
 
     horizon.pushRotated(-rollDeg);
 
-    // Fixed (non-rotating) reference symbol drawn on top of the horizon
-    // every frame, since the sprite push above just overwrote this area:
-    // the aircraft's own wings/nose. The roll-index triangle at the top of
-    // the dial is outside the sprite's footprint, so it was only drawn once
-    // in setup().
+    // Fixed (non-rotating) reference symbols drawn on top of the horizon
+    // every frame, since the sprite push above can overwrite their area.
     tft.drawFastHLine(CENTER_X - 25, CENTER_Y, 18, TFT_YELLOW);
     tft.drawFastHLine(CENTER_X + 7, CENTER_Y, 18, TFT_YELLOW);
     tft.fillCircle(CENTER_X, CENTER_Y, 2, TFT_YELLOW);
+    drawRollIndicator();
 }
