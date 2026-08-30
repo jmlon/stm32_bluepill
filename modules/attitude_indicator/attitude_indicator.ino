@@ -57,18 +57,24 @@ bool imuReady = false;
 String i2cScanResult;
 
 // Averaged at rest in setup() and subtracted from every gyro reading so a
-// static sensor offset doesn't show up as slow horizon drift.
-float gyroBiasX = 0, gyroBiasY = 0, gyroBiasZ = 0;
+// static sensor offset doesn't show up as slow horizon drift. Only the X and
+// Y axes are needed here (pitch/roll); Z (yaw) is not integrated into the
+// display, so no bias is collected for it.
+float gyroBiasX = 0, gyroBiasY = 0;
 
 // Complementary-filter state, updated every loop().
 float pitchDeg = 0, rollDeg = 0;
 uint32_t lastMicros = 0;
 
 // Horizon sprite geometry: a square disk big enough to cover the display's
-// 128px height with room to spare, palette-indexed (4bpp) to keep it small
-// on a 20KB-SRAM part -- a 16-bit full-screen framebuffer would not fit.
+// 128px width/160px height with room to spare, palette-indexed (4bpp) to
+// keep it small on a 20KB-SRAM part -- a 16-bit full-screen framebuffer
+// would not fit.
 #define DISK_SIZE   100
-#define CENTER_X    80
+// Centre the 100px disk on the 128px-wide panel: CENTER_X + DISK_SIZE/2 must
+// stay <= 127, and the true horizontal centre of the display is 64. Picking
+// anything larger leaves the disk's right edge clipped off-screen.
+#define CENTER_X    64
 #define CENTER_Y    64
 #define PX_PER_DEG  1.8f
 
@@ -106,19 +112,22 @@ void i2cScan() {
 // sensor offset doesn't get integrated into slow horizon drift.
 void calibrateGyroBias() {
     const int samples = 200;
-    double sumX = 0, sumY = 0, sumZ = 0;
+    double sumX = 0, sumY = 0;
+    int count = 0;
     for (int i = 0; i < samples; i++) {
         int16_t raw[6] = {0};
         if (myIMU.getAccelGyroData(raw) == 0) {
+            // Only average successful reads; a failed sample must not drag
+            // the mean down by being counted as zero.
             sumX += raw[0] / IMU_GYRO_LSB_PER_DPS;
             sumY += raw[1] / IMU_GYRO_LSB_PER_DPS;
-            sumZ += raw[2] / IMU_GYRO_LSB_PER_DPS;
+            count++;
         }
         delay(5);
     }
-    gyroBiasX = sumX / samples;
-    gyroBiasY = sumY / samples;
-    gyroBiasZ = sumZ / samples;
+    if (count == 0) return;   // no valid samples: leave bias at rest (zero)
+    gyroBiasX = sumX / count;
+    gyroBiasY = sumY / count;
 }
 
 void setup() {
