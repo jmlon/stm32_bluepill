@@ -141,3 +141,7 @@ redistribute firmware or library modifications.
 [GxEPD2 - Display Library for SPI E-Paper Displays](https://github.com/ZinggJM/GxEPD2)
 
 [How to Use WeAct 1.54 E-paper module: Examples, Pinouts, and Specs](https://docs.cirkitdesigner.com/component/175fa3e3-2b65-451c-aa10-715821aab4fa) — the compatible WeAct unit
+
+[Github repo](https://github.com/MHEtLive/MH-ET-LIVE-E-Papers)
+
+[Simple E Ink Display MH-ET LIVE 1.54" for Your Projects](https://www.hackster.io/xxlukas84/simple-e-ink-display-mh-et-live-1-54-for-your-projects-003efb)
