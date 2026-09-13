@@ -4,6 +4,8 @@
 #include <DFRobot_BMI160.h>
 
 // Board: STM32F103C8T6
+// Display: ST7735 128x160 Blue // Compile with -DST7735_GREENTAB2=1
+// Display: ST7735 128x160 Red  // Compile with -DST7735_REDTAB=1
 
 // Required libraries:
 // arduino-cli lib install "DFRobot_BMI160"
@@ -18,12 +20,12 @@
 // TFT_eSPI display/pin configuration is passed at compile time via
 // build-flags.txt (USER_SETUP_LOADED) instead of editing the library.
 
-// Display connection:
-// CS  -> PA4        SPI Chip Select (Default hardware pin)
-// RES -> PA2        Display Reset (Can map to any GPIO)
-// DC  -> PA3        Data / Command Select (Can map to any GPIO)
-// SDA -> PA7 = SPI1 Master Out Slave In (Mandatory Hardware Pin)
-// SCL -> PA5SPI1 Serial Clock (Mandatory Hardware Pin)
+// Display connection (Blue/Red)
+// CS        -> PA4        SPI Chip Select (Default hardware pin)
+// RES/RESET -> PA2        Display Reset (Can map to any GPIO)
+// DC/A0     -> PA3        Data / Command Select (Can map to any GPIO)
+// SDA       -> PA7 = SPI1 Master Out Slave In (Mandatory Hardware Pin)
+// SCL/SCK   -> PA5SPI1 Serial Clock (Mandatory Hardware Pin)
 
 // IMU connection (I2C)
 // PB7 -> SDA
