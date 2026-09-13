@@ -11,6 +11,7 @@
 // this directory for panel care notes -- in particular, this demo is meant
 // to be run for a while and then stopped, not left refreshing for days.
 
+#include <SPI.h>
 #include <GxEPD2_BW.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
@@ -38,7 +39,7 @@
 // Display connection (SPI1)
 // ---------------------------------------------------------------------------
 // CLK  -> PA5       SPI1 Serial Clock (mandatory hardware pin)
-// DIN  -> PA7       SPI1 Master Out Slave In (mandatory hardware pin)
+// SDI/DIN  -> PA7   SPI1 Master Out Slave In (MOSI) (mandatory hardware pin)
 // CS   -> PA4       Chip Select (driven as plain GPIO, need not be SPI1 NSS)
 // DC   -> PA3       Data / Command select (any GPIO)
 // RST  -> PA2       Reset (any GPIO; required for hibernate/wake)
@@ -258,6 +259,30 @@ static void runPartialDemo() {
 
 void setup() {
   Serial.begin(115200);
+
+  // ---------------------------------------------------------------------
+  // Workaround: STM32 core 3.0.0 never initialises SPI at default settings
+  // ---------------------------------------------------------------------
+  // SPIClass::configSpi() only calls spi_init() when the requested settings
+  // differ from the ones it has stored:
+  //
+  //     if (_spiSettings != settings) { _spiSettings = settings; spi_init(...); }
+  //
+  // _spiSettings starts life as SPISettings(), which is 4 MHz / MODE0 / MSB
+  // first / controller -- exactly what SPI.begin() then asks for, and exactly
+  // what GxEPD2 asks for in beginTransaction(). The comparison says "no
+  // change", spi_init() never runs, so RCC never gates the SPI1 clock on and
+  // PA5/PA6/PA7 stay floating inputs instead of alternate-function pins.
+  // The first transfer then spins forever in spi_com.c's unbounded
+  // while (!LL_SPI_IsActiveFlag_TXE(...)) and the sketch hangs, silently.
+  //
+  // Asking once for settings that are NOT the default forces a real
+  // spi_init(); GxEPD2's own 4 MHz / MODE0 request afterwards then differs
+  // from these and re-initialises properly. Harmless on a fixed core: it
+  // just costs one extra peripheral init.
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE1));
+  SPI.endTransaction();
 
   // init(115200) forwards GxEPD2's own diagnostics to Serial, which is where
   // a BUSY line that never goes inactive will show up (the library gives up

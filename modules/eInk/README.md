@@ -2,7 +2,10 @@
 
 ## MH-ET Live e-paper (E-ink) display
 
-> **Status:** notes only. This module does not contain driver code yet.
+> **Status:** working. `eInk.ino` in this directory is a demo that cycles through
+> four screens (splash, GFX primitives, text/fonts, partial-update counter).
+> Read [SPI on STM32 core 3.0.0](#spi-on-stm32-core-300) before wiring anything
+> up -- an unpatched core hangs the sketch before a single byte reaches the panel.
 
 These notes target the **MH-ET Live 1.54-inch** e-paper module (200 × 200 pixels).
 The **WeAct 1.54-inch** module is a compatible unit: same resolution, same SPI
@@ -88,16 +91,16 @@ sensitive both to how it is driven in software and to its physical environment.
 
 Common wiring for a STM32F103C8T6 Bluepill using SPI1:
 
-| Display | Bluepill SPI1 example |
-|---|---|
-| `SCK` / `CLK` | `PA5` |
-| `MOSI` / `DIN` | `PA7` |
-| `CS` | Any suitable GPIO, for example `PA4` |
-| `DC` | Any GPIO |
-| `RST` | Any GPIO |
-| `BUSY` | Any GPIO input |
-| `GND` | `GND` |
-| `VCC` | Verified 3.3 V supply |
+| Display       | Bluepill SPI1 example |
+|---------------|-----------------------|
+| `SCK` / `CLK`  | `PA5`                |
+| `MOSI` / `DIN` | `PA7`                |
+| `CS`           | Any suitable GPIO, for example `PA4` |
+| `DC`           | Any GPIO             |
+| `RST`          | Any GPIO             |
+| `BUSY`         | Any GPIO input       |
+| `GND`          | `GND`                |
+| `VCC`          | Verified 3.3 V supply |
 
 `MISO` is normally not required for these displays because they are usually
 write-only. `CS` is driven as a plain GPIO by GxEPD2, so it does not have to be
@@ -123,6 +126,77 @@ of the SRAM for the application. Three-color panels need two buffers
   or reinitialization.
 - SPI settings and maximum clock rate should follow the module/library
   documentation.
+
+### SPI on STM32 core 3.0.0
+
+STM32 Arduino core **3.0.0 never initialises SPI when a sketch asks for the
+default settings**, which makes a correctly wired panel look completely dead.
+
+`SPIClass::configSpi()` only calls `spi_init()` when the requested settings
+differ from the ones it has stored:
+
+```cpp
+if (_spiSettings != settings) { _spiSettings = settings; spi_init(...); }
+```
+
+`_spiSettings` is pre-initialised to `SPISettings()`, which is 4 MHz / `MODE0` /
+MSB-first / controller -- byte-for-byte what `SPI.begin()` then requests, and
+what GxEPD2 requests in `beginTransaction()`. The comparison reports "no
+change", so `spi_init()` never runs: `RCC_APB2ENR` bit 12 (`SPI1EN`) stays
+clear and `PA5`/`PA6`/`PA7` stay floating inputs instead of alternate-function
+pins. The first transfer then spins forever in `spi_com.c`:
+
+```c
+while (!LL_SPI_IsActiveFlag_TXE(_SPI));   /* no timeout on F1 */
+```
+
+That loop has no timeout on the F1 -- the `SPI_TRANSFER_TIMEOUT` check below it
+only runs once both spins have already passed -- so the sketch hangs silently,
+with no serial output and no panel activity.
+
+Ask once for settings that are *not* the default, before handing SPI to a
+library. This forces a real `spi_init()`, and the library's own request
+afterwards differs from it and re-initialises properly:
+
+```cpp
+SPI.begin();
+SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE1));
+SPI.endTransaction();
+```
+
+It costs one extra peripheral init and is harmless on a fixed core. See
+`eInk.ino` for the commented version.
+
+Sketches that drive SPI with their own register-level code -- `TFT_eSPI`, as in
+`modules/attitude_indicator` -- are unaffected, so this only appears the first
+time a sketch on this board uses the Arduino SPI API.
+
+### Debugging a hung sketch without a serial adapter
+
+With this FQBN (`GenF1:pnum=BLUEPILL_F103C8`, no USB option) `Serial` is USART1
+on `PA9`/`PA10`, not the onboard USB port, so `Serial.print()` needs a USB-TTL
+adapter. The ST-Link used for `make flash-<sketch>` can substitute: it halts a
+running sketch in place and reads peripheral registers.
+
+```sh
+st-util -n -p 4242 &          # -n / --no-reset: halt where it hangs,
+                              # not at the reset vector
+arm-none-eabi-gdb -batch -x script.gdb build/eInk/eInk.ino.elf
+```
+
+With `target extended-remote :4242` in the script, `bt` gives the stuck call
+chain and `x/4xw <addr>` reads peripherals. Flash the matching build first, or
+the symbols will lie. Useful addresses on the F103:
+
+| Peripheral | Address | Registers |
+|------------|---------|-----------|
+| `RCC_APB2ENR` | `0x40021018` | bit 2 `IOPAEN`, bit 12 `SPI1EN`, bit 14 `USART1EN` |
+| `SPI1`        | `0x40013000` | `CR1`, `CR2`, `SR`, `DR` |
+| `GPIOA`       | `0x40010800` | `CRL`, `CRH`, `IDR`, `ODR` |
+
+A healthy SPI1 reads `SPI1EN` set, `CR1` with `SPE`/`MSTR`/`SSM`/`SSI`, `SR`
+with `TXE`, and `GPIOA_CRL` nibbles of `9` (alternate-function push-pull) for
+`PA5`/`PA6`/`PA7`.
 
 ### Library
 
