@@ -7,10 +7,11 @@
 // arduino-cli lib install "GxEPD2"          (pulls in Adafruit GFX + BusIO)
 //
 // The face is redrawn once a minute with a partial update (no flashing), and
-// once an hour with a full refresh to clear the ghosting those partial updates
-// accumulate. That matches the panel care notes in ../eInk/README.md: at 60
-// partial updates and 1 full refresh per hour this is gentle enough to leave
-// running, unlike the eInk demo next door.
+// twice a day with a full refresh to clear the ghosting those partial updates
+// accumulate. That matches the panel care notes in ../eInk/README.md: it is
+// the full refreshes that flash the panel and actually wear it, so they are
+// kept rare. Two a day proved to be enough on this panel -- an hourly full
+// refresh showed no less ghosting, just 22 more refreshes a day.
 //
 // Set the time by sending "HH:MM" (or "HH:MM:SS") over Serial at 115200 --
 // which is USART1 on PA9/PA10, not the onboard USB port, so it needs a
@@ -77,6 +78,15 @@ GxEPD2_BW<PANEL_CLASS, PAGE_HEIGHT> display(
 #define MIN_HAND_TAIL   16
 
 #define HUB_R            5   // the pivot the hands turn on
+
+// ---------------------------------------------------------------------------
+// Refresh pacing
+// ---------------------------------------------------------------------------
+// Full refreshes happen at 00:00 and 12:00. This is the backstop for when that
+// minute is missed -- setting the clock over Serial can step straight over the
+// boundary, and without it the panel could then run far longer than half a day
+// on partial updates alone.
+#define FULL_REFRESH_PARTIALS (12 * 60)
 
 // ---------------------------------------------------------------------------
 // Hardware RTC
@@ -389,12 +399,13 @@ void loop() {
   // 0xFF means "nothing on screen yet", which forces the first update to be a
   // full refresh -- the panel may be holding an arbitrary stored image.
   static uint8_t shownMinute = 0xFF;
+  static uint16_t partialsSinceFull = 0;
 
   if (mm != shownMinute) {
-    // Top of the hour gets the full refresh that clears the ghosting left by
-    // the preceding 59 partial updates.
-    bool full = (shownMinute == 0xFF) || (mm == 0);
+    bool full = (shownMinute == 0xFF) || (hh % 12 == 0 && mm == 0) ||
+                (partialsSinceFull >= FULL_REFRESH_PARTIALS);
     showClock(hh, mm, full);
+    partialsSinceFull = full ? 0 : uint16_t(partialsSinceFull + 1);
     shownMinute = mm;
   }
 
