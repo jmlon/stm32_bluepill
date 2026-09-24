@@ -6,10 +6,11 @@
 // Required libraries:
 // arduino-cli lib install "GxEPD2"          (pulls in Adafruit GFX + BusIO)
 //
-// Cycles through four screens to exercise the panel: an info splash, GFX
-// primitives, text/fonts, and a partial-update counter. See README.md in
-// this directory for panel care notes -- in particular, this demo is meant
-// to be run for a while and then stopped, not left refreshing for days.
+// Shows four screens once to exercise the panel: an info splash, GFX
+// primitives, text/fonts, and a partial-update counter. It then clears the
+// panel to white and leaves it powered down, so a panel left on the bench is
+// not worn by endless refreshes or left holding an image. See README.md in
+// this directory for panel care notes.
 
 #include <SPI.h>
 #include <GxEPD2_BW.h>
@@ -71,6 +72,7 @@ GxEPD2_BW<PANEL_CLASS, PAGE_HEIGHT> display(
 #define SCREEN_HOLD_MS   8000
 #define PARTIAL_STEPS    10
 #define PARTIAL_PERIOD_MS 1500
+#define SCREEN_COUNT     4
 
 uint8_t screenIndex = 0;
 
@@ -306,13 +308,18 @@ void setup() {
 }
 
 void loop() {
+  // The demo runs once; after the final clear there is nothing left to do.
+  if (screenIndex >= SCREEN_COUNT) {
+    return;
+  }
+
   switch (screenIndex) {
     case 0: showFullScreen(drawSplash); break;
     case 1: showFullScreen(drawShapes); break;
     case 2: showFullScreen(drawText);   break;
     case 3: runPartialDemo();           break;
   }
-  screenIndex = (screenIndex + 1) % 4;
+  screenIndex++;
 
   // Power the panel down between screens. The image stays on the glass with
   // no power at all; hibernate() also drops the controller into deep sleep,
@@ -321,4 +328,13 @@ void loop() {
   display.hibernate();
 
   delay(SCREEN_HOLD_MS);
+
+  if (screenIndex == SCREEN_COUNT) {
+    // Leave the panel white rather than holding the last screen: an image
+    // kept on the glass for a long time can burn in. clearScreen() wakes the
+    // controller from hibernate, and the final hibernate() leaves it off.
+    display.clearScreen();
+    display.hibernate();
+    Serial.println(F("demo finished, panel cleared and powered down"));
+  }
 }
